@@ -11,65 +11,65 @@ UserBehavior是阿里巴巴提供的一个淘宝用户行为数据集，用于�
 ## 数据预处理
 ```sql
 -- 检查空值
-select * from DWD_user_behavior where user_id is null;
-select * from DWD_user_behavior where item_id is null;
-select * from DWD_user_behavior where category_id is null;
-select * from DWD_user_behavior where behavior_type is null;
-select * from DWD_user_behavior where timestamps is null;
+select * from user_behavior_raw where user_id is null;
+select * from user_behavior_raw where item_id is null;
+select * from user_behavior_raw where category_id is null;
+select * from user_behavior_raw where behavior_type is null;
+select * from user_behavior_raw where timestamps is null;
 ```
 数据完整，无缺失值。
 ```sql
 -- 检查重复值
-select user_id,item_id,timestamps from DWD_user_behavior
+select user_id,item_id,timestamps from user_behavior_raw
 group by user_id,item_id,timestamps
 having count(*)>1;
 -- 去重
-alter table DWD_user_behavior add id int first;
-select * from DWD_user_behavior limit 5;
-alter table DWD_user_behavior modify id int primary key auto_increment;
-delete DWD_user_behavior from
-DWD_user_behavior,
+alter table user_behavior_raw add id int first;
+select * from user_behavior_raw limit 5;
+alter table user_behavior_raw modify id int primary key auto_increment;
+delete user_behavior_raw from
+user_behavior_raw,
 (
-select user_id,item_id,timestamps,min(id) id from DWD_user_behavior
+select user_id,item_id,timestamps,min(id) id from user_behavior_raw
 group by user_id,item_id,timestamps
 having count(*)>1
 ) t2
-where DWD_user_behavior.user_id=t2.user_id
-and DWD_user_behavior.item_id=t2.item_id
-and DWD_user_behavior.timestamps=t2.timestamps
-and DWD_user_behavior.id>t2.id;
+where user_behavior_raw.user_id=t2.user_id
+and user_behavior_raw.item_id=t2.item_id
+and user_behavior_raw.timestamps=t2.timestamps
+and user_behavior_raw.id>t2.id;
 ```
 经处理，数据去除重复值。
 ```sql
 -- 新增日期：date time hour
 -- datetime
-alter table DWD_user_behavior add datetimes TIMESTAMP(0);
-update DWD_user_behavior set datetimes=FROM_UNIXTIME(timestamps);
-select * from DWD_user_behavior limit 5;
+alter table user_behavior_raw add datetimes TIMESTAMP(0);
+update user_behavior_raw set datetimes=FROM_UNIXTIME(timestamps);
+select * from user_behavior_raw limit 5;
 -- date
-alter table DWD_user_behavior add dates char(10);
-alter table DWD_user_behavior add times char(8);
-alter table DWD_user_behavior add hours char(2);
--- update DWD_user_behavior set dates=substring(datetimes,1,10),times=substring(datetimes,12,8),hours=substring(datetimes,12,2);
-update DWD_user_behavior set dates=substring(datetimes,1,10);
-update DWD_user_behavior set times=substring(datetimes,12,8);
-update DWD_user_behavior set hours=substring(datetimes,12,2);
-select * from DWD_user_behavior limit 5;
+alter table user_behavior_raw add dates char(10);
+alter table user_behavior_raw add times char(8);
+alter table user_behavior_raw add hours char(2);
+-- update user_behavior_raw set dates=substring(datetimes,1,10),times=substring(datetimes,12,8),hours=substring(datetimes,12,2);
+update user_behavior_raw set dates=substring(datetimes,1,10);
+update user_behavior_raw set times=substring(datetimes,12,8);
+update user_behavior_raw set hours=substring(datetimes,12,2);
+select * from user_behavior_raw limit 5;
 ```
 经处理，原始数据中的 `timestamps` 列（Unix时间戳）被转换为可读的日期时间格式，并进一步拆分为单独的日期（`dates`）、时间（`times`）和小时（`hours`）字段，以便后续进行按日、按时的精细化分析。
 ```sql
 -- 去异常
-select max(datetimes),min(datetimes) from DWD_user_behavior;
-delete from DWD_user_behavior
+select max(datetimes),min(datetimes) from user_behavior_raw;
+delete from user_behavior_raw
 where datetimes < '2017-11-25 00:00:00'
 or datetimes > '2017-12-03 23:59:59';
 ```
 经处理，已去除时间异常的值。
 ```sql
 -- 数据概览
-desc DWD_user_behavior;
-select * from DWD_user_behavior limit 5;
-SELECT count(1) from DWD_user_behavior; -- 100095496条记录
+desc user_behavior_raw;
+select * from user_behavior_raw limit 5;
+SELECT count(1) from user_behavior_raw; -- 100095496条记录
 ```
 综上，完成了对数据的预处理
 ## 数据库优化
