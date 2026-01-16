@@ -298,7 +298,7 @@ where cart=0 and fac=0 and buy >0
 从分析角度来看，用户的购买行为呈现出高度集中且决策直接的特征。超过80%的购买行为通过“浏览后购买”和“直接购买”这两种最简路径完成，这强烈暗示了在本次观测场景下，用户要么目的明确、快速下单，要么在简单浏览后便迅速做出购买决策，整体购物流程倾向于高效和直接。虽然存在加购、收藏等中间环节，但它们并非主流购买路径的必要前置步骤，更多是作为少数用户的辅助决策工具。这一方面可能说明平台的商品展示或推荐机制有效地促成了快速转化，另一方面也提示我们，那些复杂的、包含多重考虑环节的购物行为模式在当前用户群体中并不普遍，未来或可通过引导用户使用加购和收藏功能，来进一步沉淀消费意向并提升复购率。
 
 ## RFM模型
-```
+```sql
 #RFM模型 R最近一次消费 F消费频率 M值消费金额
 create table rfm_model(
     user_id int,
@@ -352,7 +352,7 @@ group by class;
 从分析角度来看，该结果提示平台用户中存在显著的留存与转化机会。发展用户规模较大，意味着许多用户虽近期有过消费，但尚未形成稳定的购买习惯，可通过激励策略进一步培养其消费频次，使其向价值用户迁移。而挽留用户数量庞大，则说明存在相当一部分沉默或流失风险较高的用户，需要主动采取召回与互动措施，防止其完全流失。整体而言，该分类为后续精细化运营提供了明确的方向——在维护好现有价值用户的同时，应着力提升发展用户的消费黏性，并有效唤醒挽留用户，以优化整体用户健康度与平台价值。
 
 ## 商品分析
-```
+```sql
 create table popular_categories(
 category_id int,
 pv int);
@@ -384,6 +384,143 @@ select * from popular_items;
 
 
 ## 随机森林得出的规则分析
+```python
+# 步骤1: 统计显著性筛选 (Mann-Whitney U检验)
+print("\n2. 统计显著性筛选 (Mann-Whitney U检验)...")
+significant_features = []
+
+for feature in numerical_features:
+    group_0 = df[df['is_churn'] == 0][feature].dropna()
+    group_1 = df[df['is_churn'] == 1][feature].dropna()
+
+    if len(group_0) < 10 or len(group_1) < 10:
+        continue
+
+    stat, p_value = stats.mannwhitneyu(group_1, group_0, alternative='two-sided')
+
+    if p_value < 0.05:
+        significant_features.append(feature)
+
+print(f"  显著特征数: {len(significant_features)} (p<0.05)")
+print(f"  剔除不显著特征数: {len(numerical_features) - len(significant_features)}")
+
+if len(significant_features) == 0:
+    print("  ⚠ 没有显著特征，使用所有特征进行分析")
+    significant_features = numerical_features
+
+# 步骤2: 特征重要性排序
+print("\n3. 特征重要性排序...")
+
+X = df[significant_features].fillna(df[significant_features].median())
+y = df['is_churn']
+
+# 训练随机森林进行重要性评估
+rf_model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=8,
+    random_state=42,
+    class_weight='balanced'
+)
+rf_model.fit(X, y)
+
+# 获取特征重要性
+importance_df = pd.DataFrame({
+    'feature': significant_features,
+    'importance': rf_model.feature_importances_
+}).sort_values('importance', ascending=False)
+
+print("  特征重要性排序 (全部显著特征):")
+for i, row in importance_df.iterrows():
+    print(f"    {i+1:2d}. {row['feature']:25s} - {row['importance']:.4f}")
+
+# 步骤3: 处理高相关性特征
+print("\n4. 高相关性特征处理...")
+
+# 获取重要性字典
+importance_dict = importance_df.set_index('feature')['importance'].to_dict()
+
+# 初始化处理后的特征列表
+remaining_features = significant_features.copy()
+removed_features = []
+
+# 按重要性从高到低排序特征
+remaining_features_sorted = sorted(remaining_features,
+                                   key=lambda x: importance_dict[x],
+                                   reverse=True)
+
+# 处理高相关性特征
+i = 0
+while i < len(remaining_features_sorted):
+    current_feature = remaining_features_sorted[i]
+
+    j = i + 1
+    while j < len(remaining_features_sorted):
+        compare_feature = remaining_features_sorted[j]
+
+        # 计算相关性
+        correlation = df[[current_feature, compare_feature]].corr().iloc[0, 1]
+
+        # 如果相关性大于0.7，保留重要性更高的特征
+        if abs(correlation) > 0.7:
+            if importance_dict[current_feature] > importance_dict[compare_feature]:
+                # 当前特征更重要，移除比较特征
+                if compare_feature in remaining_features_sorted:
+                    remaining_features_sorted.remove(compare_feature)
+                    removed_features.append(f"{compare_feature} (被{current_feature}替换，相关性:{correlation:.3f})")
+                j -= 1  # 因为移除了一个元素，索引需要调整
+            else:
+                # 比较特征更重要，移除当前特征
+                remaining_features_sorted.remove(current_feature)
+                removed_features.append(f"{current_feature} (被{compare_feature}替换，相关性:{correlation:.3f})")
+                i -= 1  # 因为移除了当前特征，索引需要调整
+                break
+
+        j += 1
+    i += 1
+
+print(f"  高相关性处理后特征数: {len(remaining_features_sorted)}个")
+print(f"  移除的高相关特征数: {len(removed_features)}个")
+
+if removed_features:
+    print(f"  移除的高相关特征详情:")
+    for feat in removed_features[:10]:  # 最多显示10个
+        print(f"    - {feat}")
+    if len(removed_features) > 10:
+        print(f"    ... 还有{len(removed_features)-10}个")
+else:
+    print("  未发现高相关性特征 (>0.7)")
+```
+11111
+```
+# 准备数据
+X_final = df[selected_features].fillna(df[selected_features].median())
+y_final = df['is_churn']
+
+# 划分数据集
+X_train, X_test, y_train, y_test = train_test_split(
+    X_final, y_final, test_size=0.3, random_state=42, stratify=y_final
+)
+
+print(f"  训练集: {X_train.shape[0]}, 测试集: {X_test.shape[0]}")
+print(f"  使用特征数: {len(selected_features)}个")
+
+# 训练随机森林模型（替换决策树）
+rf_model_final = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=10,
+    min_samples_split=20,
+    min_samples_leaf=10,
+    max_features='sqrt',
+    class_weight='balanced',
+    random_state=42,
+    n_jobs=-1
+)
+rf_model_final.fit(X_train, y_train)
+# 模型评估
+y_pred = rf_model_final.predict(X_test)
+y_pred_proba = rf_model_final.predict_proba(X_test)[:, 1]
+```
+
 规则名称 触发条件 预警精准度 用户覆盖率 业务解读与运营建议 
 沉睡用户预警 days_since_last_active > 1 且 total_actions < 20 53.9% 51.8% （最高优先级） 捕捉“低活跃且已开始沉默”的广泛群体。建议进行自动化、低成本的批量触达，如推送个性化内容或小额优惠券。 
 高放弃率-低活跃预警 cart_abandon_rate > 0.6 且 active_days <= 2 52.0% 26.7% 针对低活跃用户中有明确“购买意向受挫”信号的子集。可进行稍高成本的定向干预，如购物车商品提醒专享券。 
