@@ -378,55 +378,8 @@ limit 10;
 
 select * from popular_categories;
 select * from popular_items;
-
--- 特定商品转化率
-#购买用户占总用户数量
--- 保存
-create table item_detail(
-item_id int,
-pv int,
-fav int,
-cart int,
-buy int,
-user_buy_rate float);
-
-insert into item_detail
-select item_id
-,count(if(behavior_type='pv',behavior_type,null)) 'pv'
-,count(if(behavior_type='fav',behavior_type,null)) 'fav'
-,count(if(behavior_type='cart',behavior_type,null)) 'cart'
-,count(if(behavior_type='buy',behavior_type,null)) 'buy'
-,count(distinct if(behavior_type='buy',user_id,null))/count(distinct user_id) 商品转化率
-from userbehavior_raw
-group by item_id
-order by 商品转化率 desc;
-
-select * from item_detail;
-
--- 品类转化率
-
-create table category_detail(
-category_id int,
-pv int,
-fav int,
-cart int,
-buy int,
-user_buy_rate float);
-
-insert into category_detail
-select category_id
-,count(if(behavior_type='pv',behavior_type,null)) 'pv'
-,count(if(behavior_type='fav',behavior_type,null)) 'fav'
-,count(if(behavior_type='cart',behavior_type,null)) 'cart'
-,count(if(behavior_type='buy',behavior_type,null)) 'buy'
-,count(distinct if(behavior_type='buy',user_id,null))/count(distinct user_id) 品类转化率
-from userbehavior_raw
-group by category_id
-order by 品类转化率 desc;
-
-select * from category_detail;
 ```
-我们提取了浏览量最高的前10名商品和品类，并以CSV格式存储了相关数据。具体而言，商品数据如popular_items.csv所示，其中商品ID 812879以30,079次浏览位居首位，而其他商品如3845720、138964等浏览量也均超过14,000次；品类数据则如popular_categories.csv所示，品类ID 4756105以4,477,682次浏览显著领先，其余前10名品类的浏览量从超过315万次到约73万次不等，这些数据直观反映了用户行为在商品和品类层面的集中分布。
+我们提取了浏览量最高的前10名商品和品类，并以CSV格式存储了相关数据。具体而言，商品数据如popular_items.csv所示，其中商品ID 812879以30,079次浏览位居首位，而其他商品如3845720、138964等浏览量也均超过14,000次；品类数据则如popular_categories.csv所示，品类ID 4756105以4,477,682次浏览显著领先，其余前10名品类的浏览量从超过315万次到约73万次不等，这些数据直观反映了用户行为在商品和品类层面的集中分布。 
 从分析角度看，商品和品类的浏览量呈现出明显的长尾效应，热门项目的浏览量远高于其他。例如，顶级商品的浏览量达到30,079次，而前10名商品的浏览量均超过14,000次，显示用户兴趣高度集中于少数热门商品；品类层面同样如此，最高浏览量的品类接近450万次，与前10名中最低的约73万次形成鲜明对比，这揭示了用户行为在电商平台中的聚焦趋势。这些高浏览量数据可作为隐式反馈的重要指标，用于优化推荐系统的算法，通过识别用户偏好提升个性化服务；同时，数据覆盖的9天时间窗口可能暗示了季节性促销或短期用户行为模式，为进一步研究用户动态和商业策略提供了基础。
 
 
