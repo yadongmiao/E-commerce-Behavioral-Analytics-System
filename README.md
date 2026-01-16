@@ -131,5 +131,24 @@ DWS层 (Data Warehouse Service) - 数据服务层基于明细数据进行轻度�
 
 ADS层 (Application Data Store) - 应用数据层面向具体业务场景进行高度聚合，直接生成各类分析报表和数据看板，包含pv_uv_puv、retention_rate、behavior_user_num等十余张业务报表。
 
-DIM层 (Dimension) - 维度层存放描述性信息和缓慢变化的维度数据，提供统一的维度描述和业务口径，在本项目中包含fanyi这一路径类型翻译表。
+DIM层 (Dimension) - 维度层存放描述性信息和缓慢变化的维度数据，提供统一的维度描述和业务口径，在本项目中包含fanyi这一路径类型翻译表。  
+第六，由于单表数据量过亿，因此考虑分区分表分库。例如如下的分区操作：
+```sql
+-- 按日期分区，每个分区对应一天数据
+ALTER TABLE userbehavior_processed 
+PARTITION BY RANGE COLUMNS(dates) (
+    PARTITION p20171125 VALUES LESS THAN ('2017-11-26'),
+    PARTITION p20171126 VALUES LESS THAN ('2017-11-27'),
+    PARTITION p20171127 VALUES LESS THAN ('2017-11-28'),
+    PARTITION p20171128 VALUES LESS THAN ('2017-11-29'),
+    PARTITION p20171129 VALUES LESS THAN ('2017-11-30'),
+    PARTITION p20171130 VALUES LESS THAN ('2017-12-01'),
+    PARTITION p20171201 VALUES LESS THAN ('2017-12-02'),
+    PARTITION p20171202 VALUES LESS THAN ('2017-12-03'),
+    PARTITION p20171203 VALUES LESS THAN ('2017-12-04')
+);
+```
+但考虑到数据量虽达到条件，但本身并非巨量且不会再增长，同时经过优化查询时间可以接受，查询模式不适合（混合型查询），数据时间窗口太短（9天），分区带来的写入开销不值得等因素，暂不实施分区分表分库操作，作为后备优化方案以待未来使用。
+
+
 
