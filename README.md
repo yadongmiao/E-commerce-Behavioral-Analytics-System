@@ -152,15 +152,9 @@ PARTITION BY RANGE COLUMNS(dates) (
 
 ## 获客情况
 ```sql
-create table userb like userbehavior_raw;
-insert into userb
-select * from  userbehavior_raw limit 100000;
 #pv页面浏览量
 #独立访客UV
 #浏览深度=PV/UV
-select dates,count(*) 'pv',count(distinct user_id) 'uv',round(count(*)/count(distinct user_id),1) 'pv/uv' from userb where behavior_type='pv'
-group by dates;
-#处理真实数据和保存结果
 create table pv_uv_puv(
     dates char(10),
     pv int(9),uv int(9),
@@ -171,89 +165,39 @@ select dates,count(*) 'pv',count(distinct user_id) 'uv',round(count(*)/count(dis
 group by dates;
 delete from pv_uv_puv where dates is null;
 ```
-从数据本身来看，这份统计涵盖了2017年11月25日至12月3日连续九天的用户点击行为概况，主要记录了每日的商品详情页浏览量、独立访客数以及浏览深度三项核心指标。在这期间，页面浏览量呈现先平稳后攀升的态势，初期数值保持在900万上下，最后两日则跃升至1200万以上；独立访客数也表现出类似的增长模式，从最初的约68万逐步上升至93万余。浏览深度指标始终稳定在12.9至13.7的狭窄区间内，显示出每位用户日均浏览页面数的高度一致性。
+表pv_uv_puv涵盖了2017年11月25日至12月3日连续九天的用户点击行为概况，主要记录了每日的商品详情页浏览量、独立访客数以及浏览深度三项核心指标。在这期间，页面浏览量呈现先平稳后攀升的态势，初期数值保持在900万上下，最后两日则跃升至1200万以上；独立访客数也表现出类似的增长模式，从最初的约68万逐步上升至93万余。浏览深度指标始终稳定在12.9至13.7的狭窄区间内，显示出每位用户日均浏览页面数的高度一致性。  
 从分析角度来看，数据揭示了显著的周末效应与潜在促销影响：在12月2日（周六）和3日（周日）两天，无论是页面浏览量还是独立访客数都出现了突兀的峰值增长，这很可能与用户周末闲暇时间增多以及电商平台“双十二”预热活动的开启密切相关。值得注意的是，尽管流量大幅波动，浏览深度却始终保持平稳，这可能意味着用户行为模式具有内在稳定性，平台内容或商品布局对用户吸引力的持续性较好。然而，流量激增并未带动深度指标的同步提升，这也暗示了新涌入用户的参与度可能尚未充分释放，值得进一步观察其后续转化表现。
 
 ## 留存和跳失
 ```sql
-#留存率和跳失率
-select * from userbehavior_raw where dates is null;
-delete from userbehavior_raw where dates is null;
-
-select user_id,dates from userb group by user_id,dates;
-#自关联
-#自关联全表
-select * from
-(select user_id,dates from userb group by user_id,dates) a,
-(select user_id,dates from userb group by user_id,dates) b
-where a.user_id=b.user_id and a.dates<b.dates;
-#留存
-select a.dates ,
-count(if(datediff(b.dates,a.dates)=0,b.user_id,null)) retention_0,
-count(if(datediff(b.dates,a.dates)=1,b.user_id,null)) retention_1,
-count(if(datediff(b.dates,a.dates)=3,b.user_id,null)) retention_3
-from
-(select user_id,dates from userb group by user_id,dates) a,
-(select user_id,dates from userb group by user_id,dates) b
-where a.user_id=b.user_id and a.dates<=b.dates
-group by a.dates;
-
-#留存率
-select a.dates ,
-
-count(if(datediff(b.dates,a.dates)=1,b.user_id,null))/count(if(datediff(b.dates,a.dates)=0,b.user_id,null)) retention_1
-
-from
-(select user_id,dates from userb group by user_id,dates) a,
-(select user_id,dates from userb group by user_id,dates) b
-where a.user_id=b.user_id and a.dates<=b.dates
-group by a.dates;
-
-#保存结果
 create table retention_rate(
     dates char(10),
     retention_1 float
-
 );
-
 insert into retention_rate
 select a.dates ,
-
 count(if(datediff(b.dates,a.dates)=1,b.user_id,null))/count(if(datediff(b.dates,a.dates)=0,b.user_id,null)) retention_1
-
 from
 (select user_id,dates from userbehavior_raw group by user_id,dates) a,
 (select user_id,dates from userbehavior_raw group by user_id,dates) b
 where a.user_id=b.user_id and a.dates<=b.dates
 group by a.dates;
 select  * from retention_rate;
-
 #跳失率
 select user_id from userbehavior_raw
 group by user_id  having  count(behavior_type)=1;
-
 select count(*) from (select user_id from userbehavior_raw
 group by user_id  having  count(behavior_type)=1) a;
-#流失134767用户
+#跳失用户  -- 88
 select sum(pv) from pv_uv_puv;
-#共4482885
-#跳失率134767/4482885 为百分之3.01
+#共89660670
+#跳失率88/89660670 
 ```
-从数据本身来看，这份留存率报表统计了2017年11月25日至12月3日期间，每日用户的次日留存率与三日（即次次次日）留存率。在数据观测期的前半段（11月25日至11月28日），两项指标表现稳定且优异，次日留存率维持在77%至79%之间，三日留存率也紧随其后，保持在76%至78%附近，用户粘性衰减曲线非常平缓。然而，数据在后半段呈现出明显的模式突变：自11月29日起，三日留存率异常跃升至98%以上；而从12月1日开始，次日留存率同样飙升至98%左右。同时跳失率极低（只浏览一次就消失）为88/89660670。
+从数据本身来看，这份留存率报表统计了2017年11月25日至12月3日期间，每日用户的次日留存率与三日（即次次次日）留存率。在数据观测期的前半段（11月25日至11月28日），两项指标表现稳定且优异，次日留存率维持在77%至79%之间，三日留存率也紧随其后，保持在76%至78%附近，用户粘性衰减曲线非常平缓。然而，数据在后半段呈现出明显的模式突变：自11月29日起，三日留存率异常跃升至98%以上；而从12月1日开始，次日留存率同样飙升至98%左右。同时跳失率极低（只浏览一次就消失）为88/89660670。  
 从分析角度来看，这种突变模式清晰地指向了数据观测窗口的截止效应。由于数据集在12月3日结束，导致对于12月1日及之后来的用户，无法观测到其三日后的行为，因此三日留存率缺失（记为0）；而对于12月1日、2日来的用户，其次日行为恰好在数据期内，故仍有记录。更值得关注的是11月29日、30日那异常高的三日留存率，这很可能是因为其观测日（12月2日、3日）恰逢周末，平台流量与用户活跃度本身就处于峰值，造成了留存率虚高。若排除这些边界干扰，核心结论是：该平台的用户短期留存能力非常出色，用户一旦访问，在接下来几天内持续回访的意愿极强，这构成了平台活跃度的坚实基础。结合此前分析中提到的极低跳失率，共同描绘出一个用户参与深度良好的产品图景。
 
 ## 时间序列分析
 ```sql
-#统计日期小时的行为
-select dates,hours
-,count(if(behavior_type='pv',behavior_type,null)) 'pv'
-,count(if(behavior_type='cart',behavior_type,null)) 'cart'
-,count(if(behavior_type='fav',behavior_type,null)) 'fav'
-,count(if(behavior_type='buy',behavior_type,null)) 'buy'
-from userb
-group by dates,hours
-order by dates,hours;
-#存储结果
 create table date_hour_behavior(
     dates char(10)
 ,hours char(2)
@@ -270,17 +214,10 @@ from userbehavior_raw
 group by dates,hours
 order by dates,hours
 ```
-从数据本身来看，这份数据集详细记录了2017年11月25日至12月3日连续九天内，每日24小时中用户的四种关键行为数据：页面浏览量、加购次数、收藏次数和购买次数。数据以每小时为粒度进行汇总，共涵盖216个时间点，完整呈现了用户活动在一天内的动态变化。观察原始数值可以发现，各类行为在夜间至凌晨时段普遍处于低谷，而在日间及晚间则显著攀升，且页面浏览量始终占据绝对主导地位，加购、收藏和购买行为的数量级相对较低但趋势相似。
+从数据本身来看，这份数据集详细记录了2017年11月25日至12月3日连续九天内，每日24小时中用户的四种关键行为数据：页面浏览量、加购次数、收藏次数和购买次数。数据以每小时为粒度进行汇总，共涵盖216个时间点，完整呈现了用户活动在一天内的动态变化。观察原始数值可以发现，各类行为在夜间至凌晨时段普遍处于低谷，而在日间及晚间则显著攀升，且页面浏览量始终占据绝对主导地位，加购、收藏和购买行为的数量级相对较低但趋势相似。  
 从分析角度来看，数据揭示了清晰的用户行为模式与时间规律：每日的活动高峰通常出现在晚上20点至22点之间，尤其是21点左右达到峰值，这对应于用户晚间休闲时间；而最低谷则集中在凌晨3点至5点，符合常规作息。周末效应尤为突出，12月2日和3日（周六、日）的各项行为指标全面大幅上扬，高峰时段的页面浏览量甚至突破百万，较工作日增长约30%以上，表明用户在有更多自由支配时间时显著提升了电商平台的参与度。此外，加购、收藏与购买行为虽与页面浏览量的走势基本同步，但其转化比例在高峰时段并未显著提升，暗示流量激增时用户的决策可能更倾向于浏览而非立即转化，这为优化促销策略与用户体验提供了重要线索。
 ## 用户转化率分析
-用户转化率分析
 ```
-#用户转化率
-select behavior_type,count(distinct user_id) user_num
-from userb
-group by behavior_type
-order by behavior_type desc;
-#用户存储结果
 create table behavior_user_num(
     behavior_type varchar(5),
     user_num int
@@ -301,7 +238,7 @@ from userbehavior_raw
 group by behavior_type
 order by behavior_type desc;
 ```
-从数据本身来看，这份统计从用户数量和行为总数两个维度，汇总了观测期间内四种关键用户行为的整体参与情况。在行为总数上，页面浏览以接近九千万次的绝对优势占据主导，而加购、收藏和购买行为的数量级则依次递减。在用户覆盖面上，超过九十八万用户产生了浏览行为，其中约六十七万用户最终完成了购买，而进行过收藏或加购操作的用户数量介于两者之间。
+从数据本身来看，这份统计从用户数量和行为总数两个维度，汇总了观测期间内四种关键用户行为的整体参与情况。在行为总数上，页面浏览以接近九千万次的绝对优势占据主导，而加购、收藏和购买行为的数量级则依次递减。在用户覆盖面上，超过九十八万用户产生了浏览行为，其中约六十七万用户最终完成了购买，而进行过收藏或加购操作的用户数量介于两者之间。  
 从分析角度来看，数据揭示了用户从接触到最终转化的典型路径与漏斗效应。几乎所有用户都始于浏览，但只有约四成用户（以收藏用户计）会进入深度互动环节，而最终有超过三分之二的浏览用户完成了购买，这一转化比例显示出平台整体转化效率较为理想。值得注意的是，进行加购的用户数量显著高于收藏用户，这可能意味着加购是更主流、更直接的消费意向表达方式。结合行为总数与用户数的比例来看，每位购买用户平均产生约3次购买行为，而每位收藏用户的平均收藏次数约为7.4次，这反映了用户在决策过程中的重复比价或心仪商品积累的习惯。整体而言，用户行为漏斗从浏览到购买的留存率较高，但如何提升用户从浏览向深度互动（收藏/加购）环节的转化，或许是进一步优化运营的关键。
 ## 行为路径分析
 ```sql
@@ -343,7 +280,6 @@ values ('0001','直接购买'),('1001','浏览后购买'),('0011','加购后购�
 ,('0111','加购收藏后购买'),('1111','浏览加购收藏后购买');
 
 select * from fanyi a right join path_count b on a.path_type=b.购买路径类型;
-
 #存储
 CREATE TABLE path_result(
     path_tape char(4),
@@ -358,17 +294,12 @@ select  sum(buy) from user_behavior_view
 where cart=0 and fac=0 and buy >0
 #直接浏览购买量为99880
 ```
-这份数据从用户与商品交互的微观视角，系统归纳并量化了八种不同的购买决策路径。数据显示，最主流的购买路径是“浏览后直接购买”，共发生了近95万次，紧随其后的是没有任何前期互动行为的“直接购买”，超过了51万次。相比之下，那些包含了加购、收藏等深度互动环节的决策路径，虽然组合多样，但其发生频率均显著降低，其中同时经历浏览、加购、收藏全过程的“完整体验”路径仅出现了约1.3万次。
+这份数据从用户与商品交互的微观视角，系统归纳并量化了八种不同的购买决策路径。数据显示，最主流的购买路径是“浏览后直接购买”，共发生了近95万次，紧随其后的是没有任何前期互动行为的“直接购买”，超过了51万次。相比之下，那些包含了加购、收藏等深度互动环节的决策路径，虽然组合多样，但其发生频率均显著降低，其中同时经历浏览、加购、收藏全过程的“完整体验”路径仅出现了约1.3万次。  
 从分析角度来看，用户的购买行为呈现出高度集中且决策直接的特征。超过80%的购买行为通过“浏览后购买”和“直接购买”这两种最简路径完成，这强烈暗示了在本次观测场景下，用户要么目的明确、快速下单，要么在简单浏览后便迅速做出购买决策，整体购物流程倾向于高效和直接。虽然存在加购、收藏等中间环节，但它们并非主流购买路径的必要前置步骤，更多是作为少数用户的辅助决策工具。这一方面可能说明平台的商品展示或推荐机制有效地促成了快速转化，另一方面也提示我们，那些复杂的、包含多重考虑环节的购物行为模式在当前用户群体中并不普遍，未来或可通过引导用户使用加购和收藏功能，来进一步沉淀消费意向并提升复购率。
 
 ## RFM模型
 ```
 #RFM模型 R最近一次消费 F消费频率 M值消费金额
-select user_id,max(dates) 最近购买时间 ,count(behavior_type) 购买次数
-from userbehavior_raw
-where behavior_type='buy'
-group by user_id
-order by  3 desc;
 create table rfm_model(
     user_id int,
     recent char(10),
@@ -416,49 +347,18 @@ end;
 select class ,count(user_id) from rfm_model
 group by class;
 ```
-基于RFM模型的SQL定义，用户被划分为四类：价值用户指消费频率高且最近消费时间近的用户，属于核心优质客户；保持用户指消费频率高但最近消费时间较远的用户，需关注其活跃度以防流失；发展用户指最近消费时间近但消费频率较低的用户，具有成长潜力；挽留用户指消费频率低且最近消费时间远的用户，存在流失风险，需主动干预。
+基于RFM模型的SQL定义，用户被划分为四类：价值用户指消费频率高且最近消费时间近的用户，属于核心优质客户；保持用户指消费频率高但最近消费时间较远的用户，需关注其活跃度以防流失；发展用户指最近消费时间近但消费频率较低的用户，具有成长潜力；挽留用户指消费频率低且最近消费时间远的用户，存在流失风险，需主动干预。  
 这份基于RFM模型的用户分类结果呈现出清晰的用户结构分布。其中，发展用户数量最多，达到288,203人，挽留用户紧随其后，有261,969人，而价值用户为97,724人，保持用户则最少，仅24,508人。这一分布表明，该平台的用户中具备高消费频率且近期活跃的“价值用户”占比并不占主导，相反，大量用户属于近期有互动但消费频次不高的“发展用户”，以及近期未消费且消费频次偏低的“挽留用户”，反映出用户整体活跃性与消费深度仍有较大提升空间，用户结构呈现一定的长尾特征。
 从分析角度来看，该结果提示平台用户中存在显著的留存与转化机会。发展用户规模较大，意味着许多用户虽近期有过消费，但尚未形成稳定的购买习惯，可通过激励策略进一步培养其消费频次，使其向价值用户迁移。而挽留用户数量庞大，则说明存在相当一部分沉默或流失风险较高的用户，需要主动采取召回与互动措施，防止其完全流失。整体而言，该分类为后续精细化运营提供了明确的方向——在维护好现有价值用户的同时，应着力提升发展用户的消费黏性，并有效唤醒挽留用户，以优化整体用户健康度与平台价值。
 
 ## 商品分析
 ```
-商品按热度分类
-select category_id,count(if(behavior_type='pv',behavior_type,null)) '品类浏览量'
-from userbehavior_raw
-group by  category_id
-order by 2 desc
-limit 10;
-
-select item_id,count(if(behavior_type='pv',behavior_type,null)) '商品浏览量'
-from userbehavior_raw
-group by  item_id
-order by 2 desc
-limit 10;
-#各个品类的最热商品
-select category_id,item_id,品类商品浏览量
-    from
-(select category_id,item_id,count(if(behavior_type='pv',behavior_type,null)) '品类商品浏览量',
-rank() over (partition by category_id order by count(if(behavior_type='pv',behavior_type,null))) r
-from userbehavior_raw
-group by  category_id,item_id
-order by 3 desc) a
-where r=1
-order by 品类商品浏览量
-limit 10
-;
--- 存储
-
 create table popular_categories(
 category_id int,
 pv int);
 create table popular_items(
 item_id int,
 pv int);
-create table popular_cateitems(
-category_id int,
-item_id int,
-pv int);
-
 
 insert into popular_categories
 select category_id
@@ -468,7 +368,6 @@ GROUP BY category_id
 order by 2 desc
 limit 10;
 
-
 insert into popular_items
 select item_id
 ,count(if(behavior_type='pv',behavior_type,null)) '商品浏览量'
@@ -477,25 +376,8 @@ GROUP BY item_id
 order by 2 desc
 limit 10;
 
-insert into popular_cateitems
-select category_id,item_id,
-品类商品浏览量 from
-(
-select category_id,item_id
-,count(if(behavior_type='pv',behavior_type,null)) '品类商品浏览量'
-,rank()over(partition by category_id order by count(if(behavior_type='pv',behavior_type,null)) desc) r
-from userbehavior_raw
-GROUP BY category_id,item_id
-order by 3 desc
-) a
-where a.r = 1
-order by a.品类商品浏览量 desc
-limit 10;
-
-
 select * from popular_categories;
 select * from popular_items;
-select * from popular_cateitems;
 
 -- 特定商品转化率
 #购买用户占总用户数量
