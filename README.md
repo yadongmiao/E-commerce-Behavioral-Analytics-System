@@ -74,7 +74,7 @@ SELECT count(1) from user_behavior_raw; -- 100095496条记录
 综上，完成了对数据的预处理
 ## 数据库优化
 在淘宝用户行为数据分析项目中，针对亿级数据处理性能瓶颈，我实施了多项核心SQL优化措施：
-第一，调整InnoDB缓冲池大小至1GB，为批量操作提供充足的内存缓存空间
+第一，调整InnoDB缓冲池大小至1GB，为批量操作提供充足的内存缓存空间  
 ```sql
 show VARIABLES like '%_buffer%';
 set GLOBAL innodb_buffer_pool_size=1070000000;
@@ -105,4 +105,31 @@ SELECT
     HOUR(FROM_UNIXTIME(time_stamp)) AS hours
 FROM userbehavior_raw;
 ```
+第四，为高频查询字段创建索引，通过EXPLAIN的进行性能的识别分析和效果验证，显著提升了基于行为和日期维度的查询效率。约85%的关键查询被这5个索引覆盖，关键查询的执行时间从1分42秒大幅缩短至31秒，性能提升超过70%。
+```sql
+-- 1. 主查询索引：覆盖行为类型+日期的基础查询
+CREATE INDEX idx_behavior_date_user ON userbehavior_raw(behavior_type, dates, user_id, time_stamp);
+
+-- 2. 用户行为分析索引：覆盖用户维度的分析
+CREATE INDEX idx_user_date_behavior ON userbehavior_raw(user_id, dates, behavior_type, item_id);
+
+-- 3. 时间序列分析索引：覆盖时间维度的聚合查询
+CREATE INDEX idx_date_hour_behavior ON userbehavior_raw(dates, hours, behavior_type);
+
+-- 4. 商品分析索引：覆盖商品和品类的分析
+CREATE INDEX idx_item_category_behavior ON userbehavior_raw(item_id, category_id, behavior_type);
+
+-- 5. 留存/用户旅程索引：覆盖用户路径分析
+CREATE INDEX idx_user_behavior_sequence ON userbehavior_raw(user_id, behavior_type, dates, time_stamp);
+```
+第五，数据仓库分层模型，数据仓库分层模型通过将数据处理流程分解为清晰的层次，有效提升了数据管理的系统性和效率。本项目的数据仓库分层模型如下：  
+ODS层 (Operational Data Store) - 操作数据层存放原始数据，与源系统保持基本一致，不做或仅做最基础的数据清洗，目的：保留原始数据，便于数据追溯和审计，在本项目中包含userbehavior表。
+
+DWD层 (Data Warehouse Detail) - 数据明细层对原始数据进行清洗、标准化和维度退化，形成规范化的明细数据，为上层分析提供高质量的数据基础，在本项目中包含userbehavior_raw和user_behavior_view，user_behavior_standard两个视图。
+
+DWS层 (Data Warehouse Service) - 数据服务层基于明细数据进行轻度汇总，构建主题宽表以提升查询效率，减少重复计算，在本项目中包含date_hour_behavior和user_behavior_path两个汇总视图。
+
+ADS层 (Application Data Store) - 应用数据层面向具体业务场景进行高度聚合，直接生成各类分析报表和数据看板，包含pv_uv_puv、retention_rate、behavior_user_num等十余张业务报表。
+
+DIM层 (Dimension) - 维度层存放描述性信息和缓慢变化的维度数据，提供统一的维度描述和业务口径，在本项目中包含fanyi这一路径类型翻译表。
 
